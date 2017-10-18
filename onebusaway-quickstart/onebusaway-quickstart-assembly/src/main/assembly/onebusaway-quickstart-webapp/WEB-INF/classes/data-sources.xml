@@ -18,9 +18,25 @@
     <property name="password" value="password" />
     <property name="admin" value="true" />
   </bean>
-
-  <bean class="org.onebusaway.users.impl.CreateApiKeyAction">
-    <property name="key" value="TEST"/>
+  
+  <bean class="org.onebusaway.container.spring.PropertyOverrideConfigurer">
+    <property name="properties">
+        <props>
+            <prop key="defaultWebappConfigurationSource.googleMapsApiKey">AIzaSyCyArYJpdqYt8spewdFm2yTsdpkZKWgCo0</prop>
+        </props>
+    </property>
+  </bean>
+  
+  <bean class="org.onebusaway.transit_data_federation.impl.realtime.gtfs_realtime.GtfsRealtimeSource">
+    <property name="tripUpdatesUrl" value="http://stif.spiralo.net/STIF" />
+    <!-- Optionally set the Vehicle Positions endpoint -->  
+    <!--  <property name="vehiclePositionsUrl" value="http://url/to/gtfs-realtime/vehicle-positions" /> -->
+    <!-- Optionally set the Service Alerts endpoint -->  
+    <property name="alertsUrl" value="http://stif.spiralo.net/STIF_ALERTS" />
+    <!-- Optionally set the refresh interval - how often we query the URLs, in seconds (default=30) -->
+    <property name="refreshInterval" value="60"/>
+    <!-- Optionally hide negative scheduled arrival times for this agency via "showNegativeScheduledArrivals" (only add this property if you have the problem explained in https://github.com/OneBusAway/onebusaway-application-modules/issues/162.  See https://github.com/OneBusAway/onebusaway-application-modules/pull/160 for the full property XML) -->
+    <!-- <property name="showNegativeScheduledArrivals" value="false" /> -->
   </bean>
 
   <!-- iOS Client -->
