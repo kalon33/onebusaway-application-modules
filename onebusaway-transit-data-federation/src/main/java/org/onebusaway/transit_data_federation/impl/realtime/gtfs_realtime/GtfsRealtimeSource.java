@@ -18,6 +18,7 @@ package org.onebusaway.transit_data_federation.impl.realtime.gtfs_realtime;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -52,10 +53,11 @@ import com.google.transit.realtime.GtfsRealtime.Alert;
 import com.google.transit.realtime.GtfsRealtime.FeedEntity;
 import com.google.transit.realtime.GtfsRealtime.FeedHeader;
 import com.google.transit.realtime.GtfsRealtime.FeedMessage;
+import com.google.transit.realtime.GtfsRealtime.TripUpdate;
 import com.google.transit.realtime.GtfsRealtimeConstants;
 import com.google.transit.realtime.GtfsRealtimeOneBusAway;
 
-public class GtfsRealtimeSource {
+public class GtfsRealtimeSource implements MonitoredDataSource {
 
   private static final Logger _log = LoggerFactory.getLogger(GtfsRealtimeSource.class);
 
@@ -87,6 +89,10 @@ public class GtfsRealtimeSource {
   private URL _alertsUrl;
 
   private int _refreshInterval = 30;
+  
+  private Map<String,String> _headersMap;
+  
+  private Map _alertAgencyIdMap;
 
   private List<String> _agencyIds = new ArrayList<String>();
 
@@ -111,6 +117,9 @@ public class GtfsRealtimeSource {
   private GtfsRealtimeTripLibrary _tripsLibrary;
 
   private GtfsRealtimeAlertLibrary _alertLibrary;
+  
+  private MonitoredResult _monitoredResult = new MonitoredResult();
+  
 
   @Autowired
   public void setAgencyService(AgencyService agencyService) {
@@ -159,6 +168,14 @@ public class GtfsRealtimeSource {
   public void setRefreshInterval(int refreshInterval) {
     _refreshInterval = refreshInterval;
   }
+  
+  public void setHeadersMap(Map<String,String> headersMap) {
+	_headersMap = headersMap;
+  }
+  
+  public void setAlertAgencyIdMap(Map alertAgencyIdMap) {
+	_alertAgencyIdMap = alertAgencyIdMap;
+  }
 
   public void setAgencyId(String agencyId) {
     _agencyIds.add(agencyId);
@@ -168,6 +185,18 @@ public class GtfsRealtimeSource {
     _agencyIds.addAll(agencyIds);
   }
 
+  public List<String> getAgencyIds() {
+    return _agencyIds;
+  }
+  
+  public void setMonitoredResult(MonitoredResult result) {
+    _monitoredResult = result;
+  }
+  
+  public MonitoredResult getMonitoredResult() {
+    return _monitoredResult;
+  }
+  
   @PostConstruct
   public void start() {
     if (_agencyIds.isEmpty()) {
@@ -210,7 +239,11 @@ public class GtfsRealtimeSource {
     FeedMessage tripUpdates = readOrReturnDefault(_tripUpdatesUrl);
     FeedMessage vehiclePositions = readOrReturnDefault(_vehiclePositionsUrl);
     FeedMessage alerts = readOrReturnDefault(_alertsUrl);
-    handeUpdates(tripUpdates, vehiclePositions, alerts);
+    MonitoredResult result = new MonitoredResult();
+    result.setAgencyIds(_agencyIds);
+    handeUpdates(result, tripUpdates, vehiclePositions, alerts);
+    // update reference in a thread safe manner
+    _monitoredResult = result;
   }
 
   /****
@@ -223,23 +256,27 @@ public class GtfsRealtimeSource {
    * @param vehiclePositions
    * @param alerts
    */
-  private synchronized void handeUpdates(FeedMessage tripUpdates,
+  private synchronized void handeUpdates(MonitoredResult result, FeedMessage tripUpdates,
       FeedMessage vehiclePositions, FeedMessage alerts) {
 
-    List<CombinedTripUpdatesAndVehiclePosition> combinedUpdates = _tripsLibrary.groupTripUpdatesAndVehiclePositions(
+    List<CombinedTripUpdatesAndVehiclePosition> combinedUpdates = _tripsLibrary.groupTripUpdatesAndVehiclePositions(result,
         tripUpdates, vehiclePositions);
-    handleCombinedUpdates(combinedUpdates);
+    result.setRecordsTotal(combinedUpdates.size());
+    handleCombinedUpdates(result, combinedUpdates);
     handleAlerts(alerts);
   }
 
-  private void handleCombinedUpdates(
+  private void handleCombinedUpdates(MonitoredResult result,
       List<CombinedTripUpdatesAndVehiclePosition> updates) {
 
     Set<AgencyAndId> seenVehicles = new HashSet<AgencyAndId>();
 
     for (CombinedTripUpdatesAndVehiclePosition update : updates) {
-      VehicleLocationRecord record = _tripsLibrary.createVehicleLocationRecordForUpdate(update);
+      VehicleLocationRecord record = _tripsLibrary.createVehicleLocationRecordForUpdate(result, update);
       if (record != null) {
+        if (record.getTripId() != null) {
+          result.addUnmatchedTripId(record.getTripId().toString());
+        }
         AgencyAndId vehicleId = record.getVehicleId();
         seenVehicles.add(vehicleId);
         Date timestamp = new Date(record.getTimeOfRecord());
@@ -282,7 +319,7 @@ public class GtfsRealtimeSource {
         _serviceAlertService.removeServiceAlert(id);
       } else {
         ServiceAlert.Builder serviceAlertBuilder = _alertLibrary.getAlertAsServiceAlert(
-            id, alert);
+            id, alert, _alertAgencyIdMap);
         ServiceAlert serviceAlert = serviceAlertBuilder.build();
         ServiceAlert existingAlert = _alertsById.get(id);
         if (existingAlert == null || !existingAlert.equals(serviceAlert)) {
@@ -325,7 +362,9 @@ public class GtfsRealtimeSource {
    * @throws IOException
    */
   private FeedMessage readFeedFromUrl(URL url) throws IOException {
-    InputStream in = url.openStream();
+   URLConnection urlConnection = url.openConnection();
+   setHeadersToUrlConnection(urlConnection);
+   InputStream in = urlConnection.getInputStream();
     try {
       return FeedMessage.parseFrom(in, _registry);
     } finally {
@@ -336,7 +375,18 @@ public class GtfsRealtimeSource {
       }
     }
   }
-
+/**
+ * Set the headers to the urlConnection if any
+ * @param urlConnection
+ * @return, the urlConnection with the headers set
+ */
+  private void setHeadersToUrlConnection(URLConnection urlConnection) {
+   if (_headersMap != null) {
+	  for (Map.Entry<String, String> headerEntry : _headersMap.entrySet()) {
+	    urlConnection.setRequestProperty(headerEntry.getKey(), headerEntry.getValue());
+	  }
+	}
+  }
   /****
    *
    ****/
