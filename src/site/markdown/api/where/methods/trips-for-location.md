@@ -6,7 +6,7 @@ Search for active trips near a specific location.
 
 ## Sample Request
 
-http://api.pugetsound.onebusaway.org/api/where/trips-for-location.xml?key=TEST&lat=47.653&lon=-122.307&latSpan=0.008&lonSpan=0.008
+http://api.pugetsound.onebusaway.org/api/where/trips-for-location.xml?key=TEST&amp;lat=47.653&amp;lon=-122.307&amp;latSpan=0.008&amp;lonSpan=0.008
 
 ## Sample Response
 
@@ -33,8 +33,8 @@ http://api.pugetsound.onebusaway.org/api/where/trips-for-location.xml?key=TEST&l
 * lat - The latitude coordinate of the search center
 * lon - The longitude coordinate of the search center
 * latSpan/lonSpan - Set the limits of the search bounding box
-* includeTrips - Can be true/false to determine whether full [`<trip/>` elements](../elements/trip.html) are included in the `<references/>` section.  Defaults to false.
-* includeSchedules - Can be true/false to determine whether full `<schedule/>` elements are included in the `<tripDetails/>` section.  Defaults to false.
+* includeTrip - Can be true/false to determine whether full [`<trip/>` elements](../elements/trip.html) are included in the `<references/>` section.  Defaults to false.
+* includeSchedule - Can be true/false to determine whether full `<schedule/>` elements are included in the `<tripDetails/>` section.  Defaults to false.
 * time - by default, the method returns the status of the system right now.  However, the system
   can also be queried at a specific time.  This can be useful for testing.  See [timestamps](../index.html#Timestamps)
   for details on the format of the `time` parameter.

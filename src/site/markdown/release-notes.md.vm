@@ -3,6 +3,29 @@
 #set( $H = '#' ) ## When using velocity templating (a .vm file), the ## indicates a Velocity comment, which makes Markdown section headers tricky
 
 $H$H ${currentVersion}
+  * CVE-2017-5638; upgrade struts to 2.3.32
+$H$H 1.1.15
+  * documentation cleanup
+  * quickstart api key fixes
+  * Travis configuration
+  * [issue](https://github.com/OneBusAway/onebusaway-application-modules/issues/132)
+  * [issue](https://github.com/OneBusAway/onebusaway-application-modules/issues/134)
+  * TripUpdate.delay support
+  * agency id remapping for GTFS realtime
+  * prevent assignment of backwards travel on distance-along-shape
+
+$H$H 1.1.13
+  * issue with deployment of 1.1.12 release.  Functionally equivalent.
+
+$H$H 1.1.12
+* New Features/Bug Fixes:
+  * Java 7 support
+  * Issue [37](https://github.com/OneBusAway/onebusaway-application-modules/pull/37)
+  * Issue [34](https://github.com/OneBusAway/onebusaway-application-modules/pull/34)
+  * Issue [59](https://github.com/OneBusAway/onebusaway-application-modules/pull/59)
+  * Issue [89](https://github.com/OneBusAway/onebusaway-application-modules/pull/89)
+
+$H$H 1.1.11
 * New Features:
   * Merged OneBusAway Enterprise TransitDataService changes; see Issue 72 below.
 * Bug Fixes:

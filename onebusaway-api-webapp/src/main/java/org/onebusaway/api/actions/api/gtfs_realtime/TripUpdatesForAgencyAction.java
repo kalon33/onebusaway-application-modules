@@ -73,6 +73,8 @@ public class TripUpdatesForAgencyAction extends GtfsRealtimeActionSupport {
           if (timepointPrediction.getTimepointPredictedDepartureTime() != -1) {
             departure.setTime(timepointPrediction.getTimepointPredictedDepartureTime());
           }
+
+	      
         }
         
         tripUpdate.setTimestamp(vehicle.getLastUpdateTime() / 1000);
@@ -85,8 +87,9 @@ public class TripUpdatesForAgencyAction extends GtfsRealtimeActionSupport {
           departure.setTime(timestamp / 1000 + tripStatus.getNextStopTimeOffset());
         }
         
-        tripUpdate.setTimestamp(vehicle.getLastUpdateTime() / 1000);
       }
+      tripUpdate.setDelay((int) tripStatus.getScheduleDeviation());
+      tripUpdate.setTimestamp(vehicle.getLastUpdateTime() / 1000);
     }
   }
 }

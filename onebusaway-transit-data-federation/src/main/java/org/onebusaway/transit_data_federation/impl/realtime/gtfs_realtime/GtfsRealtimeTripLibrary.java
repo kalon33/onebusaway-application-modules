@@ -83,10 +83,15 @@ class GtfsRealtimeTripLibrary {
 
   public List<CombinedTripUpdatesAndVehiclePosition> groupTripUpdatesAndVehiclePositions(
       FeedMessage tripUpdates, FeedMessage vehiclePositions) {
+    return groupTripUpdatesAndVehiclePositions(null, tripUpdates, vehiclePositions);
+  }
+  
+  public List<CombinedTripUpdatesAndVehiclePosition> groupTripUpdatesAndVehiclePositions(MonitoredResult result,
+      FeedMessage tripUpdates, FeedMessage vehiclePositions) {
 
-    Map<BlockDescriptor, List<TripUpdate>> tripUpdatesByBlockDescriptor = getTripUpdatesByBlockDescriptor(tripUpdates);
+    Map<BlockDescriptor, List<TripUpdate>> tripUpdatesByBlockDescriptor = getTripUpdatesByBlockDescriptor(result, tripUpdates);
     boolean tripsIncludeVehicleIds = determineIfTripUpdatesIncludeVehicleIds(tripUpdatesByBlockDescriptor.keySet());
-    Map<BlockDescriptor, FeedEntity> vehiclePositionsByBlockDescriptor = getVehiclePositionsByBlockDescriptor(
+    Map<BlockDescriptor, FeedEntity> vehiclePositionsByBlockDescriptor = getVehiclePositionsByBlockDescriptor(result,
         vehiclePositions, tripsIncludeVehicleIds);
 
     List<CombinedTripUpdatesAndVehiclePosition> updates = new ArrayList<CombinedTripUpdatesAndVehiclePosition>(
@@ -136,6 +141,12 @@ class GtfsRealtimeTripLibrary {
    */
   public VehicleLocationRecord createVehicleLocationRecordForUpdate(
       CombinedTripUpdatesAndVehiclePosition update) {
+    return createVehicleLocationRecordForUpdate(null, update);
+  }    
+    
+    public VehicleLocationRecord createVehicleLocationRecordForUpdate(MonitoredResult result,
+        CombinedTripUpdatesAndVehiclePosition update) {
+
 
     VehicleLocationRecord record = new VehicleLocationRecord();
     record.setTimeOfRecord(currentTime());
@@ -144,7 +155,7 @@ class GtfsRealtimeTripLibrary {
 
     record.setBlockId(blockDescriptor.getBlockEntry().getId());
 
-    applyTripUpdatesToRecord(blockDescriptor, update.tripUpdates, record);
+    applyTripUpdatesToRecord(result, blockDescriptor, update.tripUpdates, record);
 
     if (update.vehiclePosition != null) {
       applyVehiclePositionToRecord(update.vehiclePosition, record);
@@ -155,6 +166,15 @@ class GtfsRealtimeTripLibrary {
      */
     record.setVehicleId(record.getBlockId());
 
+    if (result != null) {
+      if (record.getTripId() != null) {
+        result.addMatchedTripId(record.getTripId().toString());
+      } else {
+        // we don't have a tripId, use the BlockId instead
+        result.addMatchedTripId(record.getBlockId().toString());
+      }
+    }
+    
     if (blockDescriptor.getVehicleId() != null) {
       String agencyId = record.getBlockId().getAgencyId();
       record.setVehicleId(new AgencyAndId(agencyId,
@@ -180,7 +200,7 @@ class GtfsRealtimeTripLibrary {
     return vehicleIdCount > blockDescriptors.size() / 2;
   }
 
-  private Map<BlockDescriptor, List<TripUpdate>> getTripUpdatesByBlockDescriptor(
+  private Map<BlockDescriptor, List<TripUpdate>> getTripUpdatesByBlockDescriptor(MonitoredResult result,
       FeedMessage tripUpdates) {
 
     Map<BlockDescriptor, List<TripUpdate>> tripUpdatesByBlockDescriptor = new FactoryMap<BlockDescriptor, List<TripUpdate>>(
@@ -196,7 +216,7 @@ class GtfsRealtimeTripLibrary {
         continue;
       }
       TripDescriptor trip = tripUpdate.getTrip();
-      BlockDescriptor blockDescriptor = getTripDescriptorAsBlockDescriptor(
+      BlockDescriptor blockDescriptor = getTripDescriptorAsBlockDescriptor(result,
           trip, true);
       totalTrips++;
       if (blockDescriptor == null) {
@@ -219,6 +239,10 @@ class GtfsRealtimeTripLibrary {
   }
 
   private boolean hasDelayValue(TripUpdate tripUpdate) {
+
+    if (tripUpdate.hasDelay()) {
+      return true;
+    }
 
     if (tripUpdate.hasExtension(GtfsRealtimeOneBusAway.obaTripUpdate)) {
       OneBusAwayTripUpdate obaTripUpdate = tripUpdate.getExtension(GtfsRealtimeOneBusAway.obaTripUpdate);
@@ -248,7 +272,7 @@ class GtfsRealtimeTripLibrary {
     return hasDelay;
   }
 
-  private Map<BlockDescriptor, FeedEntity> getVehiclePositionsByBlockDescriptor(
+  private Map<BlockDescriptor, FeedEntity> getVehiclePositionsByBlockDescriptor(MonitoredResult result,
       FeedMessage vehiclePositions, boolean includeVehicleIds) {
 
     Map<BlockDescriptor, FeedEntity> vehiclePositionsByBlockDescriptor = new HashMap<BlockDescriptor, FeedEntity>();
@@ -263,7 +287,7 @@ class GtfsRealtimeTripLibrary {
         continue;
       }
       TripDescriptor trip = vehiclePosition.getTrip();
-      BlockDescriptor blockDescriptor = getTripDescriptorAsBlockDescriptor(
+      BlockDescriptor blockDescriptor = getTripDescriptorAsBlockDescriptor(result, 
           trip, includeVehicleIds);
       if (blockDescriptor != null) {
         FeedEntity existing = vehiclePositionsByBlockDescriptor.put(
@@ -277,14 +301,20 @@ class GtfsRealtimeTripLibrary {
     return vehiclePositionsByBlockDescriptor;
   }
 
-  private BlockDescriptor getTripDescriptorAsBlockDescriptor(
+  private BlockDescriptor getTripDescriptorAsBlockDescriptor(MonitoredResult result,
       TripDescriptor trip, boolean includeVehicleIds) {
     if (!trip.hasTripId()) {
       return null;
     }
     TripEntry tripEntry = _entitySource.getTrip(trip.getTripId());
     if (tripEntry == null) {
-      _log.warn("no trip found with id=" + trip.getTripId());
+      if (result != null) {
+        _log.debug("reporting unmatched trip with id=" + trip.getTripId());
+        result.addUnmatchedTripId(trip.getTripId());
+      } else {
+        _log.warn("no trip found with id=" + trip.getTripId());
+      }
+      
       return null;
     }
     BlockEntry block = tripEntry.getBlock();
@@ -298,7 +328,7 @@ class GtfsRealtimeTripLibrary {
     return blockDescriptor;
   }
 
-  private void applyTripUpdatesToRecord(BlockDescriptor blockDescriptor,
+  private void applyTripUpdatesToRecord(MonitoredResult result, BlockDescriptor blockDescriptor,
       List<TripUpdate> tripUpdates, VehicleLocationRecord record) {
 
     BlockEntry block = blockDescriptor.getBlockEntry();
@@ -312,6 +342,9 @@ class GtfsRealtimeTripLibrary {
       instances = _blockCalendarService.getClosestActiveBlocks(block.getId(), t);
     }
     if (instances.isEmpty()) {
+      if (result != null) {
+        result.addUnmatchedBlockId(block.getId());
+      }
       _log.warn("could not find any active schedules instance for the specified block="
           + block.getId() + " tripUpdates=" + tripUpdates);
       return;
@@ -341,6 +374,10 @@ class GtfsRealtimeTripLibrary {
       if (updatesForTrip != null) {
         for (TripUpdate tripUpdate : updatesForTrip) {
 
+          /**
+           * TODO: delete this code once all upstream systems have been
+           * migrated the new "delay" and "timestamp" fields.
+           */
           if (tripUpdate.hasExtension(GtfsRealtimeOneBusAway.obaTripUpdate)) {
             OneBusAwayTripUpdate obaTripUpdate = tripUpdate.getExtension(GtfsRealtimeOneBusAway.obaTripUpdate);
             if (obaTripUpdate.hasDelay()) {
@@ -356,6 +393,18 @@ class GtfsRealtimeTripLibrary {
             if (obaTripUpdate.hasTimestamp()) {
               best.timestamp = obaTripUpdate.getTimestamp() * 1000;
             }
+          }
+
+          if (tripUpdate.hasDelay()) {
+            /**
+             * TODO: Improved logic around picking the "best" schedule deviation
+             */
+            best.delta = 0;
+            best.isInPast = false;
+            best.scheduleDeviation = tripUpdate.getDelay();
+          }
+          if (tripUpdate.hasTimestamp()) {
+            best.timestamp = tripUpdate.getTimestamp() * 1000;
           }
 
           for (StopTimeUpdate stopTimeUpdate : tripUpdate.getStopTimeUpdateList()) {
